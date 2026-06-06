@@ -48,10 +48,11 @@ def _murmur_hash(value: str, seed: int) -> int:
     return mmh3.hash(value.encode("utf-8"), seed, signed=False) % LARGE_PRIME
 
 
-def _tabulation_hash(value: int, table: np.ndarray) -> int:
-    h = 0
+def _tabulation_hash_batch(values: np.ndarray, table: np.ndarray) -> np.ndarray:
+    h = np.zeros(len(values), dtype=np.int64)
     for byte_pos in range(4):
-        h ^= int(table[byte_pos, (value >> (8 * byte_pos)) & 0xFF])
+        byte_vals = (values >> (8 * byte_pos)) & 0xFF
+        h ^= table[byte_pos, byte_vals]
     return h % LARGE_PRIME
 
 
@@ -82,9 +83,10 @@ def compute_minhash_signature(
             signature.append(min(_murmur_hash(s, seed) for s in shingles))
 
     elif hash_family == "tabulation":
-        shingle_hashes = [stable_hash(s) for s in shingles]
+        shingle_hashes = np.array([stable_hash(s) for s in shingles], dtype=np.int64)
         for table in hash_functions:
-            signature.append(min(_tabulation_hash(x, table) for x in shingle_hashes))
+            hashed = _tabulation_hash_batch(shingle_hashes, table)
+            signature.append(int(hashed.min()))
 
     return np.array(signature, dtype=np.uint64)
 
