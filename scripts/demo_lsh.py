@@ -1,4 +1,5 @@
 from near_dup.data import load_20newsgroups
+from near_dup.evaluation import evaluate_candidates
 from near_dup.preprocessing import create_word_shingles
 from near_dup.similarity import compute_ground_truth
 from near_dup.minhash import compute_signature_matrix
@@ -42,13 +43,7 @@ def main():
         rows_per_band=rows_per_band,
     )
 
-    true_pairs = set(ground_truth.keys())
-    true_positives = candidates & true_pairs
-    false_positives = candidates - true_pairs
-    false_negatives = true_pairs - candidates
-
-    precision = len(true_positives) / len(candidates) if candidates else 0.0
-    recall = len(true_positives) / len(true_pairs) if true_pairs else 0.0
+    metrics = evaluate_candidates(candidates, ground_truth)
 
     print(f"Documents used: {len(documents)}")
     print(f"k: {k}")
@@ -58,11 +53,12 @@ def main():
     print(f"Ground truth threshold: {threshold}")
     print(f"Ground truth pairs: {len(ground_truth)}")
     print(f"LSH candidate pairs: {len(candidates)}")
-    print(f"True positives: {len(true_positives)}")
-    print(f"False positives: {len(false_positives)}")
-    print(f"False negatives: {len(false_negatives)}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
+    print(f"True positives: {metrics['true_positives']}")
+    print(f"False positives: {metrics['false_positives']}")
+    print(f"False negatives: {metrics['false_negatives']}")
+    print(f"Precision: {metrics['precision']:.4f}")
+    print(f"Recall: {metrics['recall']:.4f}")
+    print(f"F1-score: {metrics['f1_score']:.4f}")
 
 
 if __name__ == "__main__":
