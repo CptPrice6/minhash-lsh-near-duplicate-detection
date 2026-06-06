@@ -5,8 +5,6 @@ from near_dup.minhash import compute_signature_matrix, estimate_jaccard_from_sig
 
 
 def main():
-    print("Loading 20 Newsgroups dataset...")
-
     dataset = load_20newsgroups()
 
     documents = dataset.data[:1000]
@@ -15,20 +13,7 @@ def main():
     k = 5
     num_hashes = 100
 
-    print(f"Using {len(documents)} documents.")
-    print(f"Creating word shingles with k = {k}...")
-
     shingle_sets = [create_word_shingles(document, k=k) for document in documents]
-
-    print(f"Computing MinHash signatures with {num_hashes} hash functions...")
-    signatures = compute_signature_matrix(
-        shingle_sets=shingle_sets,
-        num_hashes=num_hashes,
-        seed=42,
-    )
-
-    print("\nSignature matrix created.")
-    print(f"Shape: {signatures.shape}")
 
     pairs_to_check = [
         (0, 1),
@@ -36,18 +21,40 @@ def main():
         (358, 408),
     ]
 
-    print("\nExact Jaccard vs MinHash estimated Jaccard:")
+    hash_families = [
+        "linear",
+        "murmur",
+        "tabulation",
+    ]
 
-    for i, j in pairs_to_check:
-        exact = jaccard_similarity(shingle_sets[i], shingle_sets[j])
-        estimated = estimate_jaccard_from_signatures(signatures[i], signatures[j])
+    print(f"Documents used: {len(documents)}")
+    print(f"k: {k}")
+    print(f"Number of hash functions: {num_hashes}")
 
-        print(
-            f"Pair ({i}, {j}) | "
-            f"categories = {categories[i]} / {categories[j]} | "
-            f"exact = {exact:.4f} | "
-            f"estimated = {estimated:.4f}"
+    for hash_family in hash_families:
+        print()
+        print(f"Hash family: {hash_family}")
+
+        signatures = compute_signature_matrix(
+            shingle_sets=shingle_sets,
+            num_hashes=num_hashes,
+            seed=42,
+            hash_family=hash_family,
         )
+
+        print(f"Signature matrix shape: {signatures.shape}")
+        print("Exact Jaccard vs MinHash estimated Jaccard:")
+
+        for i, j in pairs_to_check:
+            exact = jaccard_similarity(shingle_sets[i], shingle_sets[j])
+            estimated = estimate_jaccard_from_signatures(signatures[i], signatures[j])
+
+            print(
+                f"Pair ({i}, {j}) | "
+                f"categories = {categories[i]} / {categories[j]} | "
+                f"exact = {exact:.4f} | "
+                f"estimated = {estimated:.4f}"
+            )
 
 
 if __name__ == "__main__":
