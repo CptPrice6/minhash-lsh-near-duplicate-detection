@@ -5,3 +5,4 @@ mmh3
 matplotlib
 nltk
 datasketch
+datasets

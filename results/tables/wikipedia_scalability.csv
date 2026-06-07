@@ -1,0 +1,4 @@
+dataset,documents,k,min_shingles,hash_family,seed,num_hashes,num_bands,rows_per_band,total_possible_pairs,lsh_candidate_pairs,candidate_fraction,candidate_reduction,shingling_time_seconds,signature_time_seconds,lsh_time_seconds,total_runtime_seconds
+wikipedia,1000,5,20,murmur,42,100,50,2,499500,634,0.001269,0.998731,0.755786,10.753244,0.260217,11.769247
+wikipedia,2000,5,20,murmur,42,100,50,2,1999000,2784,0.001393,0.998607,1.019377,15.417488,0.132085,16.56895
+wikipedia,5000,5,20,murmur,42,100,50,2,12497500,18216,0.001458,0.998542,1.272545,44.359613,0.395956,46.028114
