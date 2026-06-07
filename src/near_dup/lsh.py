@@ -14,6 +14,14 @@ def lsh_candidates(
     num_bands: int,
     rows_per_band: int,
 ) -> set[tuple[int, int]]:
+    """Return pairs that share at least one identical LSH band."""
+    if signatures.ndim != 2:
+        raise ValueError("signatures must be a two-dimensional matrix")
+    if num_bands <= 0:
+        raise ValueError("num_bands must be greater than 0")
+    if rows_per_band <= 0:
+        raise ValueError("rows_per_band must be greater than 0")
+
     num_documents, num_hashes = signatures.shape
 
     if num_bands * rows_per_band != num_hashes:
@@ -43,6 +51,16 @@ def lsh_candidates(
 
 
 def theoretical_lsh_probability(
-    similarity: float, num_bands: int, rows_per_band: int
+    similarity: float,
+    num_bands: int,
+    rows_per_band: int,
 ) -> float:
+    """Return the theoretical probability that a pair becomes a candidate."""
+    if not 0.0 <= similarity <= 1.0:
+        raise ValueError("similarity must be between 0 and 1")
+    if num_bands <= 0:
+        raise ValueError("num_bands must be greater than 0")
+    if rows_per_band <= 0:
+        raise ValueError("rows_per_band must be greater than 0")
+
     return 1 - (1 - similarity**rows_per_band) ** num_bands

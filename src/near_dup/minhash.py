@@ -44,11 +44,11 @@ def generate_hash_functions(
         )
 
 
-def murmur_hash(value: str, seed: int) -> int:
+def _murmur_hash(value: str, seed: int) -> int:
     return mmh3.hash(value.encode("utf-8"), seed, signed=False) % LARGE_PRIME
 
 
-def tabulation_hash_batch(values: np.ndarray, table: np.ndarray) -> np.ndarray:
+def _tabulation_hash_batch(values: np.ndarray, table: np.ndarray) -> np.ndarray:
     h = np.zeros(len(values), dtype=np.int64)
     for byte_pos in range(4):
         byte_vals = (values >> (8 * byte_pos)) & 0xFF
@@ -80,12 +80,12 @@ def compute_minhash_signature(
 
     elif hash_family == "murmur":
         for seed in hash_functions:
-            signature.append(min(murmur_hash(s, seed) for s in shingles))
+            signature.append(min(_murmur_hash(s, seed) for s in shingles))
 
     elif hash_family == "tabulation":
         shingle_hashes = np.array([stable_hash(s) for s in shingles], dtype=np.int64)
         for table in hash_functions:
-            hashed = tabulation_hash_batch(shingle_hashes, table)
+            hashed = _tabulation_hash_batch(shingle_hashes, table)
             signature.append(int(hashed.min()))
 
     return np.array(signature, dtype=np.uint64)
@@ -97,11 +97,25 @@ def compute_signature_matrix(
     seed: int = 42,
     hash_family: str = "linear",
 ) -> np.ndarray:
-    hash_functions = generate_hash_functions(num_hashes, seed, hash_family)
+    """Compute one MinHash signature for every shingle set."""
+    if not shingle_sets:
+        raise ValueError("shingle_sets must not be empty")
+
+    hash_functions = generate_hash_functions(
+        num_hashes,
+        seed,
+        hash_family,
+    )
+
     signatures = [
-        compute_minhash_signature(shingles, hash_functions, hash_family)
+        compute_minhash_signature(
+            shingles,
+            hash_functions,
+            hash_family,
+        )
         for shingles in shingle_sets
     ]
+
     return np.vstack(signatures)
 
 
@@ -109,6 +123,10 @@ def estimate_jaccard_from_signatures(
     signature_a: np.ndarray,
     signature_b: np.ndarray,
 ) -> float:
+    """Estimate Jaccard similarity from matching signature positions."""
     if len(signature_a) != len(signature_b):
         raise ValueError("Signatures must have the same length.")
+    if len(signature_a) == 0:
+        raise ValueError("Signatures must not be empty.")
+
     return float(np.mean(signature_a == signature_b))
