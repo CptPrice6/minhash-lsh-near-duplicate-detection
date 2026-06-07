@@ -4,26 +4,14 @@ from time import perf_counter
 import pandas as pd
 
 from near_dup.data import load_20newsgroups
-from near_dup.preprocessing import create_word_shingles
+from near_dup.preprocessing import (
+    create_shingle_sets,
+    get_filtered_documents,
+)
 from near_dup.similarity import compute_ground_truth
 from near_dup.minhash import compute_signature_matrix
 from near_dup.lsh import lsh_candidates
 from near_dup.evaluation import evaluate_candidates
-
-
-def get_filtered_documents(dataset, k: int, sample_size: int, min_shingles: int):
-    documents = []
-
-    for text in dataset.data:
-        shingles = create_word_shingles(text, k=k)
-
-        if len(shingles) >= min_shingles:
-            documents.append(text)
-
-        if len(documents) == sample_size:
-            break
-
-    return documents
 
 
 def main():
@@ -57,7 +45,7 @@ def main():
             min_shingles=min_shingles,
         )
 
-        shingle_sets = [create_word_shingles(document, k=k) for document in documents]
+        shingle_sets = create_shingle_sets(documents, k=k)
 
         print("Computing brute-force ground truth...")
         ground_truth_start = perf_counter()

@@ -1,5 +1,5 @@
 from near_dup.data import load_20newsgroups
-from near_dup.preprocessing import create_word_shingles
+from near_dup.preprocessing import create_shingle_sets
 from near_dup.similarity import jaccard_similarity
 from near_dup.minhash import compute_signature_matrix, estimate_jaccard_from_signatures
 
@@ -13,7 +13,7 @@ def main():
     k = 5
     num_hashes = 100
 
-    shingle_sets = [create_word_shingles(document, k=k) for document in documents]
+    shingle_sets = create_shingle_sets(documents, k=k)
 
     pairs_to_check = [
         (0, 1),

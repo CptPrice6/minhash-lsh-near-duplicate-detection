@@ -1,6 +1,6 @@
 from near_dup.data import load_20newsgroups
-from near_dup.preprocessing import create_word_shingles
-from near_dup.similarity import jaccard_similarity, compute_ground_truth
+from near_dup.preprocessing import create_shingle_sets
+from near_dup.similarity import compute_ground_truth
 
 
 def main():
@@ -17,7 +17,7 @@ def main():
     threshold = 0.2
 
     print(f"\nCreating word shingles with k = {k}...")
-    shingle_sets = [create_word_shingles(document, k=k) for document in documents]
+    shingle_sets = create_shingle_sets(documents, k=k)
 
     print("\nComputing brute-force ground truth...")
     ground_truth = compute_ground_truth(shingle_sets, threshold=threshold)

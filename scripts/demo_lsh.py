@@ -1,6 +1,9 @@
 from near_dup.data import load_20newsgroups
 from near_dup.evaluation import evaluate_candidates
-from near_dup.preprocessing import create_word_shingles
+from near_dup.preprocessing import (
+    create_shingle_sets,
+    get_filtered_documents,
+)
 from near_dup.similarity import compute_ground_truth
 from near_dup.minhash import compute_signature_matrix
 from near_dup.lsh import lsh_candidates
@@ -17,18 +20,14 @@ def main():
     rows_per_band = 2
     threshold = 0.2
 
-    documents = []
+    documents = get_filtered_documents(
+        dataset=dataset,
+        k=k,
+        sample_size=sample_size,
+        min_shingles=min_shingles,
+    )
 
-    for text in dataset.data:
-        shingles = create_word_shingles(text, k=k)
-
-        if len(shingles) >= min_shingles:
-            documents.append(text)
-
-        if len(documents) == sample_size:
-            break
-
-    shingle_sets = [create_word_shingles(document, k=k) for document in documents]
+    shingle_sets = create_shingle_sets(documents, k=k)
     ground_truth = compute_ground_truth(shingle_sets, threshold=threshold)
 
     signatures = compute_signature_matrix(

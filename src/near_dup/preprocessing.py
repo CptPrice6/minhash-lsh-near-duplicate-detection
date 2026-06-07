@@ -32,3 +32,19 @@ def create_word_shingles(text: str, k: int = 5) -> set[str]:
         shingles.add(shingle)
 
     return shingles
+
+
+def get_filtered_documents(dataset, k: int, sample_size: int, min_shingles: int):
+    documents = []
+
+    for text in dataset.data:
+        if len(create_word_shingles(text, k=k)) >= min_shingles:
+            documents.append(text)
+        if len(documents) == sample_size:
+            break
+
+    return documents
+
+
+def create_shingle_sets(documents: list[str], k: int) -> list[set[str]]:
+    return [create_word_shingles(document, k=k) for document in documents]
