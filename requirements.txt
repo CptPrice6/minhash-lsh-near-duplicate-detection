@@ -4,3 +4,4 @@ numpy
 mmh3
 matplotlib
 nltk
+datasketch
