@@ -1,5 +1,4 @@
 from pathlib import Path
-import random
 
 import numpy as np
 import pandas as pd
@@ -11,7 +10,8 @@ from near_dup.minhash import (
     estimate_jaccard_from_signatures,
 )
 from near_dup.preprocessing import create_shingle_sets, get_filtered_documents
-from near_dup.similarity import compute_ground_truth, jaccard_similarity
+from near_dup.sampling import sample_pairs_below_threshold
+from near_dup.similarity import compute_ground_truth
 
 
 def create_datasketch_minhash(
@@ -28,45 +28,6 @@ def create_datasketch_minhash(
         minhash.update(shingle.encode("utf-8"))
 
     return minhash
-
-
-def sample_negative_pairs(
-    shingle_sets: list[set[str]],
-    excluded_pairs: set[tuple[int, int]],
-    number_of_pairs: int,
-    similarity_threshold: float,
-    seed: int,
-) -> dict[tuple[int, int], float]:
-    rng = random.Random(seed)
-    sampled_pairs: dict[tuple[int, int], float] = {}
-
-    num_documents = len(shingle_sets)
-    max_attempts = number_of_pairs * 1000
-    attempts = 0
-
-    while len(sampled_pairs) < number_of_pairs and attempts < max_attempts:
-        i, j = sorted(rng.sample(range(num_documents), 2))
-        pair = (i, j)
-
-        attempts += 1
-
-        if pair in excluded_pairs or pair in sampled_pairs:
-            continue
-
-        similarity = jaccard_similarity(
-            shingle_sets[i],
-            shingle_sets[j],
-        )
-
-        if similarity < similarity_threshold:
-            sampled_pairs[pair] = similarity
-
-    if len(sampled_pairs) < number_of_pairs:
-        raise RuntimeError(
-            "Could not sample the requested number of dissimilar document pairs."
-        )
-
-    return sampled_pairs
 
 
 def calculate_error_summary(
@@ -153,7 +114,7 @@ def main():
 
     print("Sampling dissimilar document pairs...")
 
-    negative_pairs = sample_negative_pairs(
+    negative_pairs = sample_pairs_below_threshold(
         shingle_sets=shingle_sets,
         excluded_pairs=set(ground_truth.keys()),
         number_of_pairs=number_of_negative_pairs,

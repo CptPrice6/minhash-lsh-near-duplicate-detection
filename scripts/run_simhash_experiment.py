@@ -1,6 +1,4 @@
 from pathlib import Path
-import random
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -10,6 +8,7 @@ from near_dup.preprocessing import (
     create_shingle_sets,
     get_filtered_documents,
 )
+from near_dup.sampling import sample_pairs_below_threshold
 from near_dup.simhash import (
     compute_simhash,
     cosine_similarity,
@@ -19,44 +18,7 @@ from near_dup.simhash import (
 )
 from near_dup.similarity import (
     compute_ground_truth,
-    jaccard_similarity,
 )
-
-
-def sample_dissimilar_pairs(
-    shingle_sets: list[set[str]],
-    excluded_pairs: set[tuple[int, int]],
-    number_of_pairs: int,
-    similarity_threshold: float,
-    seed: int,
-) -> dict[tuple[int, int], float]:
-    rng = random.Random(seed)
-    sampled_pairs: dict[tuple[int, int], float] = {}
-
-    num_documents = len(shingle_sets)
-    max_attempts = number_of_pairs * 1000
-    attempts = 0
-
-    while len(sampled_pairs) < number_of_pairs and attempts < max_attempts:
-        i, j = sorted(rng.sample(range(num_documents), 2))
-        pair = (i, j)
-        attempts += 1
-
-        if pair in excluded_pairs or pair in sampled_pairs:
-            continue
-
-        similarity = jaccard_similarity(
-            shingle_sets[i],
-            shingle_sets[j],
-        )
-
-        if similarity < similarity_threshold:
-            sampled_pairs[pair] = similarity
-
-    if len(sampled_pairs) < number_of_pairs:
-        raise RuntimeError("Could not sample the requested number of dissimilar pairs.")
-
-    return sampled_pairs
 
 
 def calculate_summary(
@@ -179,7 +141,7 @@ def main():
 
     print("Sampling dissimilar pairs...")
 
-    dissimilar_pairs = sample_dissimilar_pairs(
+    dissimilar_pairs = sample_pairs_below_threshold(
         shingle_sets=shingle_sets,
         excluded_pairs=set(ground_truth.keys()),
         number_of_pairs=number_of_dissimilar_pairs,
