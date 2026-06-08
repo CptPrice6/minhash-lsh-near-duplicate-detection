@@ -23,24 +23,39 @@ def main():
 
     if args.dataset == "20_newsgroups":
         dataset = load_20newsgroups()
-        output_filename = "experiment_results.csv"
+        sample_size = 3000
+        threshold = 0.2
+        output_filename = "final_20_newsgroups_results.csv"
     else:
         dataset = load_reuters()
-        output_filename = "reuters_experiment_results.csv"
+        sample_size = 3000
+        threshold = 0.2
+        output_filename = "final_reuters_results.csv"
 
-    sample_size = 2000
     min_shingles = 20
-    threshold = 0.1
     seed = 42
 
-    k_values = [3, 5]
-    hash_families = ["linear", "murmur", "tabulation"]
+    k_values = [3, 5, 7]
+
+    hash_families = [
+        "linear",
+        "murmur",
+        "tabulation",
+    ]
 
     lsh_configs = [
-        {"num_hashes": 100, "num_bands": 50, "rows_per_band": 2},
-        {"num_hashes": 100, "num_bands": 25, "rows_per_band": 4},
+        # 50 hash functions
+        {"num_hashes": 50, "num_bands": 5, "rows_per_band": 10},
+        {"num_hashes": 50, "num_bands": 10, "rows_per_band": 5},
+        {"num_hashes": 50, "num_bands": 25, "rows_per_band": 2},
+        # 100 hash functions
         {"num_hashes": 100, "num_bands": 10, "rows_per_band": 10},
         {"num_hashes": 100, "num_bands": 20, "rows_per_band": 5},
+        {"num_hashes": 100, "num_bands": 25, "rows_per_band": 4},
+        {"num_hashes": 100, "num_bands": 50, "rows_per_band": 2},
+        # 200 hash functions
+        {"num_hashes": 200, "num_bands": 20, "rows_per_band": 10},
+        {"num_hashes": 200, "num_bands": 40, "rows_per_band": 5},
         {"num_hashes": 200, "num_bands": 50, "rows_per_band": 4},
         {"num_hashes": 200, "num_bands": 100, "rows_per_band": 2},
     ]
