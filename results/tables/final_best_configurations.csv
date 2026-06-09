@@ -1,0 +1,3 @@
+dataset,documents,k,min_shingles,threshold,sample_seed,hash_seed,hash_family,num_hashes,num_bands,rows_per_band,ground_truth_pairs,lsh_candidate_pairs,total_possible_pairs,candidate_fraction,candidate_reduction,true_positives,false_positives,false_negatives,precision,recall,f1_score,ground_truth_time_seconds,shingling_time_seconds,signature_time_seconds,lsh_time_seconds,total_runtime_seconds
+20_newsgroups,5000,5,20,0.200000,42,42,linear,50,25,2,156,215,12497500,0.000017,0.999983,147,68,9,0.683721,0.942308,0.792453,55.707693,0.559368,1.872480,0.118652,2.550500
+reuters,5000,7,20,0.200000,42,42,linear,200,50,4,186,147,12497500,0.000012,0.999988,142,5,44,0.965986,0.763441,0.852853,55.474986,0.412642,4.694886,0.164347,5.271875
