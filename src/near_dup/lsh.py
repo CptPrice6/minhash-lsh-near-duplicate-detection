@@ -1,12 +1,7 @@
 from collections import defaultdict
 from itertools import combinations
-import hashlib
+
 import numpy as np
-
-
-def hash_band(band: np.ndarray) -> str:
-    band_bytes = band.tobytes()
-    return hashlib.md5(band_bytes).hexdigest()
 
 
 def lsh_candidates(
@@ -14,38 +9,28 @@ def lsh_candidates(
     num_bands: int,
     rows_per_band: int,
 ) -> set[tuple[int, int]]:
-    """Return pairs that share at least one identical LSH band."""
     if signatures.ndim != 2:
         raise ValueError("signatures must be a two-dimensional matrix")
-    if num_bands <= 0:
-        raise ValueError("num_bands must be greater than 0")
-    if rows_per_band <= 0:
-        raise ValueError("rows_per_band must be greater than 0")
+    if num_bands <= 0 or rows_per_band <= 0:
+        raise ValueError("num_bands and rows_per_band must be greater than 0")
 
     num_documents, num_hashes = signatures.shape
-
     if num_bands * rows_per_band != num_hashes:
-        raise ValueError(
-            "num_bands * rows_per_band must equal the number of hash functions"
-        )
+        raise ValueError("num_bands * rows_per_band must equal the signature length")
 
     candidates = set()
 
     for band_index in range(num_bands):
-        buckets = defaultdict(list)
-
         start = band_index * rows_per_band
         end = start + rows_per_band
+        buckets: dict[bytes, list[int]] = defaultdict(list)
 
-        for doc_index in range(num_documents):
-            band = signatures[doc_index, start:end]
-            band_hash = hash_band(band)
-            buckets[band_hash].append(doc_index)
+        for document_index in range(num_documents):
+            key = signatures[document_index, start:end].tobytes()
+            buckets[key].append(document_index)
 
-        for bucket_documents in buckets.values():
-            if len(bucket_documents) > 1:
-                for i, j in combinations(bucket_documents, 2):
-                    candidates.add((i, j))
+        for bucket in buckets.values():
+            candidates.update(combinations(bucket, 2))
 
     return candidates
 
@@ -55,12 +40,9 @@ def theoretical_lsh_probability(
     num_bands: int,
     rows_per_band: int,
 ) -> float:
-    """Return the theoretical probability that a pair becomes a candidate."""
     if not 0.0 <= similarity <= 1.0:
         raise ValueError("similarity must be between 0 and 1")
-    if num_bands <= 0:
-        raise ValueError("num_bands must be greater than 0")
-    if rows_per_band <= 0:
-        raise ValueError("rows_per_band must be greater than 0")
+    if num_bands <= 0 or rows_per_band <= 0:
+        raise ValueError("num_bands and rows_per_band must be greater than 0")
 
-    return 1 - (1 - similarity**rows_per_band) ** num_bands
+    return 1.0 - (1.0 - similarity**rows_per_band) ** num_bands

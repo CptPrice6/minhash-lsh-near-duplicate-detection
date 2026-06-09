@@ -1,94 +1,94 @@
 import hashlib
 import random
-import numpy as np
+
 import mmh3
+import numpy as np
 
 LARGE_PRIME = 4_294_967_291
-
-SUPPORTED_HASH_FAMILIES = {
-    "linear",
-    "murmur",
-    "tabulation",
-}
+SUPPORTED_HASH_FAMILIES = {"linear", "murmur", "tabulation"}
 
 
-def stable_hash(value: str) -> int:
-    encoded = value.encode("utf-8")
-    digest = hashlib.md5(encoded).hexdigest()
-    return int(digest, 16) % LARGE_PRIME
+def _stable_hash(value: str) -> int:
+    digest = hashlib.blake2b(value.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big") % LARGE_PRIME
 
 
-def generate_hash_functions(
-    num_hashes: int, seed: int = 42, hash_family: str = "linear"
-):
-    if hash_family not in SUPPORTED_HASH_FAMILIES:
-        raise ValueError(f"Unsupported hash family: {hash_family}")
+def _hash_parameters(num_hashes: int, seed: int, hash_family: str):
     if num_hashes <= 0:
         raise ValueError("num_hashes must be greater than 0")
+    if hash_family not in SUPPORTED_HASH_FAMILIES:
+        raise ValueError(f"Unsupported hash family: {hash_family}")
 
     rng = random.Random(seed)
 
     if hash_family == "linear":
         return [
-            (rng.randint(1, LARGE_PRIME - 1), rng.randint(0, LARGE_PRIME - 1))
+            (
+                rng.randrange(1, LARGE_PRIME),
+                rng.randrange(LARGE_PRIME),
+            )
             for _ in range(num_hashes)
         ]
 
     if hash_family == "murmur":
-        return [rng.randint(0, 2**32 - 1) for _ in range(num_hashes)]
+        return [rng.randrange(2**32) for _ in range(num_hashes)]
 
-    if hash_family == "tabulation":
-        np_rng = np.random.default_rng(seed)
-        return np_rng.integers(
-            0, LARGE_PRIME, size=(num_hashes, 4, 256), dtype=np.int64
-        )
-
-
-def _murmur_hash(value: str, seed: int) -> int:
-    return mmh3.hash(value.encode("utf-8"), seed, signed=False) % LARGE_PRIME
-
-
-def _tabulation_hash_batch(values: np.ndarray, table: np.ndarray) -> np.ndarray:
-    h = np.zeros(len(values), dtype=np.int64)
-    for byte_pos in range(4):
-        byte_vals = (values >> (8 * byte_pos)) & 0xFF
-        h ^= table[byte_pos, byte_vals]
-    return h % LARGE_PRIME
-
-
-def compute_minhash_signature(
-    shingles: set[str],
-    hash_functions,
-    hash_family: str = "linear",
-) -> np.ndarray:
-    if hash_family not in SUPPORTED_HASH_FAMILIES:
-        raise ValueError(f"Unsupported hash family: {hash_family}")
-
-    num_hashes = (
-        len(hash_functions) if hash_family != "tabulation" else hash_functions.shape[0]
+    np_rng = np.random.default_rng(seed)
+    return np_rng.integers(
+        0,
+        LARGE_PRIME,
+        size=(num_hashes, 4, 256),
+        dtype=np.uint64,
     )
 
-    if len(shingles) == 0:
+
+def _linear_signature(shingles: set[str], parameters) -> np.ndarray:
+    hashes = np.array([_stable_hash(value) for value in shingles], dtype=np.uint64)
+    signature = np.empty(len(parameters), dtype=np.uint64)
+
+    for index, (a, b) in enumerate(parameters):
+        signature[index] = np.min((a * hashes + b) % LARGE_PRIME)
+
+    return signature
+
+
+def _murmur_signature(shingles: set[str], seeds: list[int]) -> np.ndarray:
+    return np.array(
+        [
+            min(
+                mmh3.hash(value.encode("utf-8"), seed, signed=False) % LARGE_PRIME
+                for value in shingles
+            )
+            for seed in seeds
+        ],
+        dtype=np.uint64,
+    )
+
+
+def _tabulation_signature(shingles: set[str], tables: np.ndarray) -> np.ndarray:
+    values = np.array([_stable_hash(value) for value in shingles], dtype=np.uint64)
+    signature = np.empty(len(tables), dtype=np.uint64)
+
+    for index, table in enumerate(tables):
+        hashed = np.zeros(len(values), dtype=np.uint64)
+        for byte_position in range(4):
+            byte_values = ((values >> (8 * byte_position)) & 0xFF).astype(np.intp)
+            hashed ^= table[byte_position, byte_values]
+        signature[index] = np.min(hashed % LARGE_PRIME)
+
+    return signature
+
+
+def _signature(shingles: set[str], parameters, hash_family: str) -> np.ndarray:
+    num_hashes = len(parameters)
+    if not shingles:
         return np.full(num_hashes, LARGE_PRIME, dtype=np.uint64)
 
-    signature = []
-
     if hash_family == "linear":
-        shingle_hashes = [stable_hash(s) for s in shingles]
-        for a, b in hash_functions:
-            signature.append(min((a * x + b) % LARGE_PRIME for x in shingle_hashes))
-
-    elif hash_family == "murmur":
-        for seed in hash_functions:
-            signature.append(min(_murmur_hash(s, seed) for s in shingles))
-
-    elif hash_family == "tabulation":
-        shingle_hashes = np.array([stable_hash(s) for s in shingles], dtype=np.int64)
-        for table in hash_functions:
-            hashed = _tabulation_hash_batch(shingle_hashes, table)
-            signature.append(int(hashed.min()))
-
-    return np.array(signature, dtype=np.uint64)
+        return _linear_signature(shingles, parameters)
+    if hash_family == "murmur":
+        return _murmur_signature(shingles, parameters)
+    return _tabulation_signature(shingles, parameters)
 
 
 def compute_signature_matrix(
@@ -97,36 +97,24 @@ def compute_signature_matrix(
     seed: int = 42,
     hash_family: str = "linear",
 ) -> np.ndarray:
-    """Compute one MinHash signature for every shingle set."""
     if not shingle_sets:
         raise ValueError("shingle_sets must not be empty")
 
-    hash_functions = generate_hash_functions(
-        num_hashes,
-        seed,
-        hash_family,
+    parameters = _hash_parameters(num_hashes, seed, hash_family)
+    return np.vstack(
+        [_signature(shingles, parameters, hash_family) for shingles in shingle_sets]
     )
-
-    signatures = [
-        compute_minhash_signature(
-            shingles,
-            hash_functions,
-            hash_family,
-        )
-        for shingles in shingle_sets
-    ]
-
-    return np.vstack(signatures)
 
 
 def estimate_jaccard_from_signatures(
     signature_a: np.ndarray,
     signature_b: np.ndarray,
 ) -> float:
-    """Estimate Jaccard similarity from matching signature positions."""
+    if signature_a.ndim != 1 or signature_b.ndim != 1:
+        raise ValueError("Signatures must be one-dimensional")
+    if len(signature_a) == 0 or len(signature_b) == 0:
+        raise ValueError("Signatures must not be empty")
     if len(signature_a) != len(signature_b):
-        raise ValueError("Signatures must have the same length.")
-    if len(signature_a) == 0:
-        raise ValueError("Signatures must not be empty.")
+        raise ValueError("Signatures must have the same length")
 
     return float(np.mean(signature_a == signature_b))

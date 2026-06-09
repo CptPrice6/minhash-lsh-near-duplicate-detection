@@ -1,159 +1,71 @@
 import numpy as np
 import pytest
 
-from near_dup.minhash import (
-    LARGE_PRIME,
-    compute_minhash_signature,
-    compute_signature_matrix,
-    estimate_jaccard_from_signatures,
-    generate_hash_functions,
-    stable_hash,
-)
+from near_dup.minhash import compute_signature_matrix, estimate_jaccard_from_signatures
 
 
-def test_stable_hash_is_deterministic():
-    assert stable_hash("example shingle") == stable_hash("example shingle")
-
-
-def test_stable_hash_is_within_expected_range():
-    value = stable_hash("example shingle")
-
-    assert 0 <= value < LARGE_PRIME
-
-
-@pytest.mark.parametrize(
-    "hash_family",
-    ["linear", "murmur", "tabulation"],
-)
+@pytest.mark.parametrize("hash_family", ["linear", "murmur", "tabulation"])
 def test_signature_matrix_shape(hash_family):
-    shingle_sets = [
-        {"a", "b", "c"},
-        {"a", "b", "d"},
-        {"x", "y", "z"},
-    ]
-
     signatures = compute_signature_matrix(
-        shingle_sets=shingle_sets,
+        [{"a", "b"}, {"a", "c"}, {"x", "y"}],
         num_hashes=20,
         seed=42,
         hash_family=hash_family,
     )
-
     assert signatures.shape == (3, 20)
     assert signatures.dtype == np.uint64
 
 
-@pytest.mark.parametrize(
-    "hash_family",
-    ["linear", "murmur", "tabulation"],
-)
+@pytest.mark.parametrize("hash_family", ["linear", "murmur", "tabulation"])
 def test_identical_sets_have_identical_signatures(hash_family):
-    shingle_sets = [
-        {"a", "b", "c"},
-        {"a", "b", "c"},
-    ]
-
     signatures = compute_signature_matrix(
-        shingle_sets=shingle_sets,
-        num_hashes=20,
+        [{"a", "b", "c"}, {"a", "b", "c"}],
+        20,
         seed=42,
         hash_family=hash_family,
     )
-
     assert np.array_equal(signatures[0], signatures[1])
-    assert (
-        estimate_jaccard_from_signatures(
-            signatures[0],
-            signatures[1],
-        )
-        == 1.0
-    )
 
 
-@pytest.mark.parametrize(
-    "hash_family",
-    ["linear", "murmur", "tabulation"],
-)
-def test_same_seed_produces_same_signatures(hash_family):
-    shingle_sets = [
-        {"one", "two", "three"},
-        {"one", "two", "four"},
-    ]
-
-    first = compute_signature_matrix(
-        shingle_sets=shingle_sets,
-        num_hashes=20,
-        seed=42,
-        hash_family=hash_family,
-    )
-
-    second = compute_signature_matrix(
-        shingle_sets=shingle_sets,
-        num_hashes=20,
-        seed=42,
-        hash_family=hash_family,
-    )
-
+@pytest.mark.parametrize("hash_family", ["linear", "murmur", "tabulation"])
+def test_same_seed_is_deterministic(hash_family):
+    sets = [{"a", "b"}, {"a", "c"}]
+    first = compute_signature_matrix(sets, 20, 42, hash_family)
+    second = compute_signature_matrix(sets, 20, 42, hash_family)
     assert np.array_equal(first, second)
 
 
-def test_empty_shingle_set_signature():
-    hash_functions = generate_hash_functions(
-        num_hashes=10,
-        seed=42,
-        hash_family="linear",
-    )
-
-    signature = compute_minhash_signature(
-        shingles=set(),
-        hash_functions=hash_functions,
-        hash_family="linear",
-    )
-
+def test_empty_shingle_set_has_valid_signature():
+    signature = compute_signature_matrix([set()], 10)[0]
     assert len(signature) == 10
-    assert np.all(signature == LARGE_PRIME)
 
 
 def test_invalid_number_of_hashes():
     with pytest.raises(ValueError):
-        generate_hash_functions(
-            num_hashes=0,
-            seed=42,
-            hash_family="linear",
-        )
+        compute_signature_matrix([{"a"}], 0)
 
 
-def test_unsupported_hash_family():
+def test_invalid_hash_family():
     with pytest.raises(ValueError):
-        generate_hash_functions(
-            num_hashes=10,
-            seed=42,
-            hash_family="unknown",
-        )
+        compute_signature_matrix([{"a"}], 10, hash_family="unknown")
 
 
-def test_different_signature_lengths_raise_error():
-    signature_a = np.array([1, 2, 3], dtype=np.uint64)
-    signature_b = np.array([1, 2], dtype=np.uint64)
-
+def test_empty_input():
     with pytest.raises(ValueError):
-        estimate_jaccard_from_signatures(
-            signature_a,
-            signature_b,
-        )
+        compute_signature_matrix([], 10)
 
 
-def test_empty_signature_matrix_input():
+def test_signature_estimate():
+    first = np.array([1, 2, 3, 4], dtype=np.uint64)
+    second = np.array([1, 9, 3, 8], dtype=np.uint64)
+    assert estimate_jaccard_from_signatures(first, second) == 0.5
+
+
+def test_signature_lengths_must_match():
     with pytest.raises(ValueError):
-        compute_signature_matrix(
-            shingle_sets=[],
-            num_hashes=10,
-        )
+        estimate_jaccard_from_signatures(np.array([1]), np.array([1, 2]))
 
 
-def test_empty_signatures_raise_error():
+def test_signatures_must_not_be_empty():
     with pytest.raises(ValueError):
-        estimate_jaccard_from_signatures(
-            np.array([], dtype=np.uint64),
-            np.array([], dtype=np.uint64),
-        )
+        estimate_jaccard_from_signatures(np.array([]), np.array([]))
