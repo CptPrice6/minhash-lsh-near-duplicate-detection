@@ -8,3 +8,4 @@ datasketch
 datasets
 pytest
 pytest-cov
+ruff
