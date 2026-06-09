@@ -10,7 +10,6 @@ def sample_pairs_below_threshold(
     similarity_threshold: float,
     seed: int = 42,
 ) -> dict[tuple[int, int], float]:
-    """Randomly sample unique pairs below a Jaccard threshold."""
     if number_of_pairs <= 0:
         raise ValueError("number_of_pairs must be greater than 0")
     if not 0.0 <= similarity_threshold <= 1.0:
@@ -19,28 +18,20 @@ def sample_pairs_below_threshold(
         raise ValueError("At least two shingle sets are required")
 
     rng = random.Random(seed)
-    sampled_pairs = {}
+    sampled = {}
+    max_attempts = max(10_000, number_of_pairs * 1_000)
 
-    max_attempts = number_of_pairs * 1000
-    attempts = 0
+    for _ in range(max_attempts):
+        if len(sampled) == number_of_pairs:
+            return sampled
 
-    while len(sampled_pairs) < number_of_pairs and attempts < max_attempts:
         i, j = sorted(rng.sample(range(len(shingle_sets)), 2))
         pair = (i, j)
-        attempts += 1
-
-        if pair in excluded_pairs or pair in sampled_pairs:
+        if pair in excluded_pairs or pair in sampled:
             continue
 
-        similarity = jaccard_similarity(
-            shingle_sets[i],
-            shingle_sets[j],
-        )
-
+        similarity = jaccard_similarity(shingle_sets[i], shingle_sets[j])
         if similarity < similarity_threshold:
-            sampled_pairs[pair] = similarity
+            sampled[pair] = similarity
 
-    if len(sampled_pairs) < number_of_pairs:
-        raise RuntimeError("Could not sample the requested number of document pairs.")
-
-    return sampled_pairs
+    raise RuntimeError("Could not sample the requested number of document pairs")
