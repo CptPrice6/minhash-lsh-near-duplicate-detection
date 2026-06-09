@@ -1,244 +1,172 @@
 from pathlib import Path
 
-import numpy as np
+import matplotlib.pyplot as plt
 import pandas as pd
 from datasketch import MinHash
 
 from near_dup.data import load_20newsgroups
-from near_dup.minhash import (
-    compute_signature_matrix,
-    estimate_jaccard_from_signatures,
-)
-from near_dup.preprocessing import create_shingle_sets, get_filtered_documents
+from near_dup.minhash import compute_signature_matrix, estimate_jaccard_from_signatures
+from near_dup.preprocessing import prepare_documents
 from near_dup.sampling import sample_pairs_below_threshold
 from near_dup.similarity import compute_ground_truth
+from near_dup.validation import calculate_error_summary
+
+NUM_HASH_VALUES = [50, 100, 200]
+HASH_SEEDS = [11, 23, 42, 73, 101]
+HASH_FAMILIES = ["linear", "murmur", "tabulation"]
 
 
-def create_datasketch_minhash(
-    shingles: set[str],
-    num_perm: int,
-    seed: int,
-) -> MinHash:
-    minhash = MinHash(
-        num_perm=num_perm,
-        seed=seed,
-    )
-
+def datasketch_signature(shingles: set[str], num_hashes: int, seed: int) -> MinHash:
+    signature = MinHash(num_perm=num_hashes, seed=seed)
     for shingle in sorted(shingles):
-        minhash.update(shingle.encode("utf-8"))
-
-    return minhash
-
-
-def calculate_error_summary(
-    validation_df: pd.DataFrame,
-) -> pd.DataFrame:
-    methods = {
-        "linear": "linear_estimate",
-        "murmur": "murmur_estimate",
-        "tabulation": "tabulation_estimate",
-        "datasketch": "datasketch_estimate",
-    }
-
-    subsets = {
-        "all": validation_df,
-        "similar": validation_df[validation_df["pair_type"] == "similar"],
-        "dissimilar": validation_df[validation_df["pair_type"] == "dissimilar"],
-    }
-
-    rows = []
-
-    for pair_type, subset in subsets.items():
-        for method, estimate_column in methods.items():
-            errors = subset[estimate_column] - subset["exact_jaccard"]
-
-            rows.append(
-                {
-                    "pair_type": pair_type,
-                    "method": method,
-                    "number_of_pairs": len(subset),
-                    "mean_absolute_error": errors.abs().mean(),
-                    "root_mean_squared_error": np.sqrt(np.mean(errors**2)),
-                    "maximum_absolute_error": errors.abs().max(),
-                }
-            )
-
-    return pd.DataFrame(rows)
+        signature.update(shingle.encode("utf-8"))
+    return signature
 
 
-def main():
-    dataset = load_20newsgroups()
-
-    k = 5
-    sample_size = 1000
-    min_shingles = 20
-    num_hashes = 200
-    seed = 42
-
-    positive_threshold = 0.05
-    max_positive_pairs = 100
-    number_of_negative_pairs = 100
-
-    print("Preparing validation documents...")
-
-    documents = get_filtered_documents(
-        dataset=dataset,
-        k=k,
-        sample_size=sample_size,
-        min_shingles=min_shingles,
-    )
-
-    shingle_sets = create_shingle_sets(
-        documents=documents,
-        k=k,
-    )
-
-    print(f"Documents used: {len(documents)}")
-    print(f"Shingle size k: {k}")
-    print(f"Number of permutations: {num_hashes}")
-
-    print("Finding similar document pairs...")
-
-    ground_truth = compute_ground_truth(
-        shingle_sets=shingle_sets,
-        threshold=positive_threshold,
-    )
-
-    positive_pairs = dict(
-        sorted(
-            ground_truth.items(),
-            key=lambda item: item[1],
-            reverse=True,
-        )[:max_positive_pairs]
-    )
-
-    print("Sampling dissimilar document pairs...")
-
-    negative_pairs = sample_pairs_below_threshold(
-        shingle_sets=shingle_sets,
-        excluded_pairs=set(ground_truth.keys()),
-        number_of_pairs=number_of_negative_pairs,
-        similarity_threshold=positive_threshold,
-        seed=seed,
-    )
-
-    validation_pairs: list[tuple[int, int, float, str]] = []
-
-    for (i, j), similarity in positive_pairs.items():
-        validation_pairs.append((i, j, similarity, "similar"))
-
-    for (i, j), similarity in negative_pairs.items():
-        validation_pairs.append((i, j, similarity, "dissimilar"))
-
-    selected_document_indices = sorted(
-        {document_index for i, j, _, _ in validation_pairs for document_index in (i, j)}
-    )
-
-    selected_shingle_sets = [shingle_sets[index] for index in selected_document_indices]
-
-    local_index = {
-        original_index: selected_index
-        for selected_index, original_index in enumerate(selected_document_indices)
-    }
-
-    print(
-        f"Validation pairs: {len(validation_pairs)} "
-        f"({len(positive_pairs)} similar, {len(negative_pairs)} dissimilar)"
-    )
-
-    hash_families = [
-        "linear",
-        "murmur",
-        "tabulation",
+def validation_pairs(
+    shingle_sets: list[set[str]],
+    threshold: float,
+    sample_seed: int,
+) -> list[tuple[int, int, float, str]]:
+    ground_truth = compute_ground_truth(shingle_sets, threshold)
+    positives = sorted(ground_truth.items(), key=lambda item: item[1], reverse=True)[
+        :100
     ]
+    negatives = sample_pairs_below_threshold(
+        shingle_sets=shingle_sets,
+        excluded_pairs=set(ground_truth),
+        number_of_pairs=100,
+        similarity_threshold=threshold,
+        seed=sample_seed,
+    )
 
-    signature_matrices = {}
+    pairs = [(i, j, similarity, "similar") for (i, j), similarity in positives]
+    pairs.extend(
+        (i, j, similarity, "dissimilar") for (i, j), similarity in negatives.items()
+    )
+    return pairs
 
-    for hash_family in hash_families:
-        print(f"Computing our {hash_family} signatures...")
 
-        signature_matrices[hash_family] = compute_signature_matrix(
-            shingle_sets=selected_shingle_sets,
-            num_hashes=num_hashes,
-            seed=seed,
-            hash_family=hash_family,
+def plot_summary(summary: pd.DataFrame, output: Path) -> None:
+    similar = summary[summary["pair_type"] == "similar"]
+    figure, axis = plt.subplots(figsize=(9, 6))
+
+    for method, subset in similar.groupby("method"):
+        subset = subset.sort_values("num_hashes")
+        axis.errorbar(
+            subset["num_hashes"],
+            subset["mean_absolute_error"],
+            yerr=subset["mae_standard_deviation"].fillna(0),
+            marker="o",
+            capsize=4,
+            label=method,
         )
 
-    print("Computing datasketch signatures...")
+    axis.set(
+        xlabel="Number of MinHash values",
+        ylabel="Mean absolute error on similar pairs",
+        title="MinHash error by signature length",
+    )
+    axis.set_xticks(NUM_HASH_VALUES)
+    axis.grid(True, alpha=0.3)
+    axis.legend(title="Method")
+    figure.tight_layout()
+    figure.savefig(output, dpi=300)
+    plt.close(figure)
 
-    datasketch_signatures = {
-        original_index: create_datasketch_minhash(
-            shingles=shingle_sets[original_index],
-            num_perm=num_hashes,
-            seed=seed,
-        )
-        for original_index in selected_document_indices
-    }
 
+def main() -> None:
+    sample_seed = 42
+    documents, shingle_sets = prepare_documents(
+        dataset=load_20newsgroups(),
+        k=5,
+        sample_size=1000,
+        min_shingles=20,
+        sample_seed=sample_seed,
+    )
+    pairs = validation_pairs(shingle_sets, threshold=0.05, sample_seed=sample_seed)
+
+    selected_indices = sorted({index for i, j, _, _ in pairs for index in (i, j)})
+    selected_sets = [shingle_sets[index] for index in selected_indices]
+    local_index = {original: local for local, original in enumerate(selected_indices)}
     rows = []
 
-    for i, j, exact_similarity, pair_type in validation_pairs:
-        local_i = local_index[i]
-        local_j = local_index[j]
+    print(f"Documents: {len(documents)}, validation pairs: {len(pairs)}")
 
-        linear_estimate = estimate_jaccard_from_signatures(
-            signature_matrices["linear"][local_i],
-            signature_matrices["linear"][local_j],
-        )
-
-        murmur_estimate = estimate_jaccard_from_signatures(
-            signature_matrices["murmur"][local_i],
-            signature_matrices["murmur"][local_j],
-        )
-
-        tabulation_estimate = estimate_jaccard_from_signatures(
-            signature_matrices["tabulation"][local_i],
-            signature_matrices["tabulation"][local_j],
-        )
-
-        datasketch_estimate = datasketch_signatures[i].jaccard(datasketch_signatures[j])
-
-        rows.append(
-            {
-                "document_i": i,
-                "document_j": j,
-                "pair_type": pair_type,
-                "exact_jaccard": exact_similarity,
-                "linear_estimate": linear_estimate,
-                "murmur_estimate": murmur_estimate,
-                "tabulation_estimate": tabulation_estimate,
-                "datasketch_estimate": datasketch_estimate,
-                "linear_absolute_error": abs(linear_estimate - exact_similarity),
-                "murmur_absolute_error": abs(murmur_estimate - exact_similarity),
-                "tabulation_absolute_error": abs(
-                    tabulation_estimate - exact_similarity
-                ),
-                "datasketch_absolute_error": abs(
-                    datasketch_estimate - exact_similarity
-                ),
+    for num_hashes in NUM_HASH_VALUES:
+        for hash_seed in HASH_SEEDS:
+            print(f"h={num_hashes}, seed={hash_seed}")
+            custom_signatures = {
+                family: compute_signature_matrix(
+                    selected_sets,
+                    num_hashes,
+                    seed=hash_seed,
+                    hash_family=family,
+                )
+                for family in HASH_FAMILIES
             }
-        )
+            datasketch_signatures = {
+                index: datasketch_signature(shingle_sets[index], num_hashes, hash_seed)
+                for index in selected_indices
+            }
 
-    validation_df = pd.DataFrame(rows)
-    summary_df = calculate_error_summary(validation_df)
+            for i, j, exact_similarity, pair_type in pairs:
+                for family in HASH_FAMILIES:
+                    estimated_jaccard = estimate_jaccard_from_signatures(
+                        custom_signatures[family][local_index[i]],
+                        custom_signatures[family][local_index[j]],
+                    )
+                    rows.append(
+                        {
+                            "document_i": i,
+                            "document_j": j,
+                            "pair_type": pair_type,
+                            "method": family,
+                            "num_hashes": num_hashes,
+                            "hash_seed": hash_seed,
+                            "exact_jaccard": exact_similarity,
+                            "estimated_jaccard": estimated_jaccard,
+                            "absolute_error": abs(estimated_jaccard - exact_similarity),
+                        }
+                    )
 
-    validation_df = validation_df.round(6)
-    summary_df = summary_df.round(6)
+                datasketch_estimate = datasketch_signatures[i].jaccard(
+                    datasketch_signatures[j]
+                )
+                rows.append(
+                    {
+                        "document_i": i,
+                        "document_j": j,
+                        "pair_type": pair_type,
+                        "method": "datasketch",
+                        "num_hashes": num_hashes,
+                        "hash_seed": hash_seed,
+                        "exact_jaccard": exact_similarity,
+                        "estimated_jaccard": datasketch_estimate,
+                        "absolute_error": abs(datasketch_estimate - exact_similarity),
+                    }
+                )
 
-    output_dir = Path("results") / "tables"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    validation = pd.DataFrame(rows)
+    summary = calculate_error_summary(validation)
 
-    validation_path = output_dir / "datasketch_validation.csv"
-    summary_path = output_dir / "datasketch_validation_summary.csv"
+    tables_dir = Path("results/tables")
+    figure_path = Path("results/figures/validation/minhash_validation_error.png")
+    tables_dir.mkdir(parents=True, exist_ok=True)
+    figure_path.parent.mkdir(parents=True, exist_ok=True)
 
-    validation_df.to_csv(validation_path, index=False)
-    summary_df.to_csv(summary_path, index=False)
-
-    print("\nValidation completed.")
-    print(f"Pair-level results saved to: {validation_path}")
-    print(f"Summary saved to: {summary_path}")
-    print("\nError summary:")
-    print(summary_df)
+    validation.to_csv(
+        tables_dir / "datasketch_validation.csv",
+        index=False,
+        float_format="%.6f",
+    )
+    summary.to_csv(
+        tables_dir / "datasketch_validation_summary.csv",
+        index=False,
+        float_format="%.6f",
+    )
+    plot_summary(summary, figure_path)
+    print(f"Saved validation tables and {figure_path}")
 
 
 if __name__ == "__main__":
