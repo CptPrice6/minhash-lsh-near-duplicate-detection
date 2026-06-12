@@ -34,7 +34,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-The datasets are downloaded automatically on the first run. An internet connection is required.
+The datasets are downloaded automatically on the first run. An internet connection is required. After downloading, 20 Newsgroups and Reuters are cached locally by their libraries.
 
 ## Run the main experiments
 
